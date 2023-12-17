@@ -2,9 +2,8 @@
 
 NBeats Forecasting Model with Pretraining as per Ready Tensor specifications.
 Model is pretrained using synthetically generated data and then fine-tuned on the actual data.
-Synthetic data is generated to represent the most dominant expected pattern in the actual data, given it's frequency and seasonality.
-For example for daily level data, day of the week and week of the year seasonalities are injected.
-For monthly level data, month of the year seasonality is injected.
+Synthetic data is generated to represent the most dominant expected patterns in the data given it's frequency and seasonality.
+For example for daily level data, day of the week and week of the year seasonalities are injected along with trend, random walk, and noise.
 
 ## Project Description
 
