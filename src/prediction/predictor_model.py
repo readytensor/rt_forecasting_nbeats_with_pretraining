@@ -98,10 +98,12 @@ class Forecaster:
         self.learning_rate = 1e-4
         self.model.compile_model(self.loss, self.learning_rate)
         self.batch_size = 64
+        self._is_trained = False
 
-    def build_model(self): 
+    def build_model(self):
         """Build a new forecaster."""
-        stack_types = []; thetas_dim = []
+        stack_types = []
+        thetas_dim = []
         for _ in range(self.num_generic_stacks):
             stack_types.append(self.GENERIC_BLOCK)
             thetas_dim.append(self.thetas_dim_per_stack)
@@ -175,7 +177,7 @@ class Forecaster:
             patience=patience//2,
             factor=0.5,
             min_lr=1e-7
-        )        
+        )
         history = self.model.fit(
             x=[X, E] if E is not None else X,
             y=y,
@@ -191,7 +193,7 @@ class Forecaster:
         return history
 
     def fit(self, training_data:np.ndarray, pre_training_data: Union[np.ndarray, None]=None,
-            validation_split: Union[float, None]=0.15, verbose:int=0,
+            validation_split: Union[float, None]=0.15, verbose:int=1,
             max_epochs:int=2000):
 
         """Fit the Forecaster to the training data.
@@ -203,7 +205,7 @@ class Forecaster:
         """
         if pre_training_data is not None:
             print("Conducting pretraining...")
-            pretraining_history = self._train_on_data(
+            _ = self._train_on_data(
                 data=pre_training_data,
                 validation_split=validation_split,
                 verbose=verbose,
