@@ -105,7 +105,6 @@ def run_training(
         trained_pipeline, transformed_data = fit_transform_with_pipeline(
             training_pipeline, validated_data
         )
-        print("Transformed training data shape:", transformed_data.shape)
 
         # Save pipelines
         logger.info("Saving pipelines...")
