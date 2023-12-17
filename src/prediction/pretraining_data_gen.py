@@ -5,7 +5,7 @@ from preprocessing.custom_transformers import TimeSeriesMinMaxScaler
 
 np.random.seed(1)
 
-MAX_NUM_PRETRAINING_SERIES = 100000
+MAX_NUM_PRETRAINING_SERIES = 150_000
 
 def calculate_max_N(T: int, D: int, target_ram_gb: float) -> int:
     """
@@ -57,8 +57,16 @@ def generate_seasonal_factors(
     rolling_window = num_periods // 3
     if rolling_window >= 3:
         # Apply circular rolling average
-        factors = np.array([np.mean(np.take(factors, range(i - rolling_window // 2, i + rolling_window // 2 + 1), mode='wrap'))
-                            for i in range(num_periods)])
+        factors = np.array(
+            [
+                np.mean(
+                    np.take(
+                        factors, range(i - rolling_window // 2, i + rolling_window // 2 + 1),
+                        mode='wrap'
+                    )
+                ) for i in range(num_periods)
+            ]
+        )
 
     # Determine the offset within the first period
     first_period_start_idx = np.random.randint(0, len_per_period)
@@ -77,12 +85,12 @@ def generate_seasonal_factors(
     return seasonal_factors
 
 
-def generate_trend_factors(len_series: int) -> np.ndarray:
+def generate_multiplicative_trend_factors(len_series: int) -> np.ndarray:
     """
-    Generates a vector of trend factors for a time series using a linear trend.
+    Generates a vector of trend factors for a time series using a multiplicative trend.
 
     Args:
-        len_series (int): The total length of the time series (T+H).
+        len_series (int): The total length of the time series.
 
     Returns:
         np.ndarray: A vector of trend factors of length `len_series`.
@@ -96,16 +104,46 @@ def generate_trend_factors(len_series: int) -> np.ndarray:
     max_trend_perc = np.exp(np.log(0.5e+1) / len_series)
 
     # Sample a trend percentage from a uniform distribution
-    trend_perc = np.random.uniform(min_trend_perc, max_trend_perc)
+    trend_perc = trend_perc = np.random.triangular(min_trend_perc, 1, max_trend_perc, size=1)
 
     # Create a vector of trend factors
     trend_factors = np.array([1 * (trend_perc ** i) for i in range(len_series)])
 
-    return trend_factors
+    return np.squeeze(trend_factors)
+
+
+def generate_linear_trend_factors(len_series: int) -> np.ndarray:
+    """
+    Generates a vector of linear trend factors for a time series.
+
+    Args:
+        len_series (int): The total length of the time series (T+H).
+
+    Returns:
+        np.ndarray: A vector of linear trend factors of length `len_series`.
+
+    Example:
+        >>> generate_linear_trend_factors(10)
+        [1.0, 1.03, 1.06, 1.09, ...]
+    """
+    # Randomly sample a number for the trend change per step
+    # Calculate the minimum and maximum trend percentage factors
+    max_trend_perc = 3 / len_series
+
+    # Sample a trend percentage from a uniform distribution
+    trend_factor = np.random.triangular(-max_trend_perc, 0, max_trend_perc, size=1)
+
+    # Create a vector of trend factors with a positive trend
+    trend_factors = np.array([1 + i * trend_factor for i in range(len_series)])
+
+    # With 50% probability, reverse the trend for a downward trend
+    if np.random.rand() < 0.5:
+        trend_factors = trend_factors[::-1]
+    return np.squeeze(trend_factors)
 
 
 def generate_random_walk(
-        len_series: int, mean: float = 1.0, std_dev: float = 0.05) -> np.ndarray:
+        len_series: int, mean: float = 1.0, std_dev: float = 0.01) -> np.ndarray:
     """
     Generates a multiplicative random walk sequence for a time series.
 
@@ -131,13 +169,13 @@ def generate_random_walk(
 
     return np.array(random_walk)
 
-def generate_noise(len_series: int, noise_factor: float) -> np.ndarray:
+def generate_noise(len_series: int, std_dev: float=0.02) -> np.ndarray:
     """
     Generates a vector of noise for a time series.
 
     Args:
         len_series (int): The length of the time series.
-        noise_factor (int): Noise factor.
+        std_dev (int): Std Dev of Noise (mean is 1).
 
     Returns:
         np.ndarray: A vector of noise of length `len_series`.
@@ -146,7 +184,12 @@ def generate_noise(len_series: int, noise_factor: float) -> np.ndarray:
         >>> generate_standard_normal_noise(10)
         [0.56, -1.32, ..., 0.97]
     """
-    return np.random.standard_normal(len_series) * noise_factor
+    # Generate the series
+    noise = []
+    for _ in range(len_series):
+        factor = np.random.normal(1, std_dev)
+        noise.append(factor)
+    return np.array(noise)
 
 def generate_synthetic_data(
         num_series: int, len_series: int, frequency: Frequency) -> np.ndarray:
@@ -168,7 +211,13 @@ def generate_synthetic_data(
     for i in range(num_series):
         # Apply trend
         if np.random.rand() < 0.75:
-            trend_factors = generate_trend_factors(len_series)
+
+            # Use multiplicative trend with 50% probability
+            if np.random.rand() < 0.5:
+                trend_factors = generate_multiplicative_trend_factors(len_series)
+            else:
+                # Use linear trend with 50% probability
+                trend_factors = generate_linear_trend_factors(len_series)
             synthetic_data[i] *= trend_factors
 
         # Apply seasonality based on frequency
@@ -183,7 +232,7 @@ def generate_synthetic_data(
 
         # Apply noise
         if np.random.rand() < 0.75:
-            noise_factors = generate_noise(len_series, noise_factor=0.2)
+            noise_factors = generate_noise(len_series, std_dev=0.02)
             synthetic_data[i] *= noise_factors
 
     return synthetic_data
@@ -283,9 +332,7 @@ def get_pretraining_data(
 
     # Scale data
     synthetic_data = synthetic_data.astype(np.float32)
-    scaler = TimeSeriesMinMaxScaler(
-        encode_len=series_len - forecast_length,
-    )
+    scaler = TimeSeriesMinMaxScaler(encode_len=series_len - forecast_length)
     synthetic_data = scaler.fit_transform(synthetic_data)
 
     return synthetic_data
