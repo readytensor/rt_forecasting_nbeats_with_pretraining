@@ -52,7 +52,6 @@ class Forecaster:
     SEASONALITY_BLOCK = 'seasonality'
 
     MIN_VALID_SIZE = 10
-    BATCH_SIZE = 64
 
     MODEL_NAME = "Nbeats"
 
@@ -98,6 +97,7 @@ class Forecaster:
         self.loss = 'mse'
         self.learning_rate = 1e-4
         self.model.compile_model(self.loss, self.learning_rate)
+        self.batch_size = None # calculated based on size of train data
 
     def build_model(self): 
         """Build a new forecaster."""
@@ -176,6 +176,7 @@ class Forecaster:
             factor=0.5,
             min_lr=1e-7
         )
+        self.batch_size = min(X.shape[0] // 8, 256)
         history = self.model.fit(
             x=[X, E] if E is not None else X,
             y=y,
@@ -183,7 +184,7 @@ class Forecaster:
             verbose=verbose,
             epochs=max_epochs,
             callbacks=[early_stop_callback, learning_rate_reduction],
-            batch_size=self.BATCH_SIZE,
+            batch_size=self.batch_size,
             shuffle=True
         )
         # recompile the model to reset the optimizer; otherwise re-training slows down

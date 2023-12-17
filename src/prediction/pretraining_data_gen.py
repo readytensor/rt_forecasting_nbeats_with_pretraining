@@ -5,7 +5,7 @@ from preprocessing.custom_transformers import TimeSeriesMinMaxScaler
 
 np.random.seed(1)
 
-NUM_PRETRAINING_SERIES = 50000
+MAX_NUM_PRETRAINING_SERIES = 100000
 
 def calculate_max_N(T: int, D: int, target_ram_gb: float) -> int:
     """
@@ -26,7 +26,7 @@ def calculate_max_N(T: int, D: int, target_ram_gb: float) -> int:
     # Calculating the maximum N that fits within the target RAM
     max_N = target_ram_bytes / (T * D * element_size)
 
-    return int(max_N)
+    return int(min(max_N, MAX_NUM_PRETRAINING_SERIES))
 
 # Example usage
 N = calculate_max_N(T=100, D=50, target_ram_gb=5)
@@ -62,12 +62,9 @@ def generate_seasonal_factors(
 
     # Determine the offset within the first period
     first_period_start_idx = np.random.randint(0, len_per_period)
-    first_period_start_idx = 1
-    print("first_period_start_idx", first_period_start_idx)
 
     # Create the initial partial period from the first_period_start_idx
     initial_partial_period = np.repeat(factors[0], len_per_period - first_period_start_idx)
-    print("initial_partial_period", initial_partial_period)
 
     # Adjust the cycle to start from the remaining part of the first period
     remaining_cycle = np.repeat(factors[1:], len_per_period)
