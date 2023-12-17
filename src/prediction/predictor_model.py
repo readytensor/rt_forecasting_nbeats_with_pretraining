@@ -97,7 +97,7 @@ class Forecaster:
         self.loss = 'mse'
         self.learning_rate = 1e-4
         self.model.compile_model(self.loss, self.learning_rate)
-        self.batch_size = None # calculated based on size of train data
+        self.batch_size = 64
 
     def build_model(self): 
         """Build a new forecaster."""
@@ -175,8 +175,7 @@ class Forecaster:
             patience=patience//2,
             factor=0.5,
             min_lr=1e-7
-        )
-        self.batch_size = min(X.shape[0] // 8, 256)
+        )        
         history = self.model.fit(
             x=[X, E] if E is not None else X,
             y=y,

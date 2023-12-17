@@ -55,7 +55,7 @@ def generate_seasonal_factors(
 
     # Calculate the rolling window length (num_periods // 3)
     rolling_window = num_periods // 3
-    if rolling_window >= 2:
+    if rolling_window >= 3:
         # Apply circular rolling average
         factors = np.array([np.mean(np.take(factors, range(i - rolling_window // 2, i + rolling_window // 2 + 1), mode='wrap'))
                             for i in range(num_periods)])
@@ -76,23 +76,6 @@ def generate_seasonal_factors(
 
     return seasonal_factors
 
-
-
-def calculate_max_trend_perc(len_series: int) -> float:
-    """
-    Calculates the maximum trend percentage factor for a linear trend.
-
-    Args:
-        len_series (int): The total length of the time series (T+H).
-
-    Returns:
-        float: The maximum trend percentage factor.
-
-    Example:
-        >>> calculate_max_trend_perc(10000)
-        1.000460623
-    """
-    return np.exp(np.log(100) / len_series)
 
 def generate_trend_factors(len_series: int) -> np.ndarray:
     """
