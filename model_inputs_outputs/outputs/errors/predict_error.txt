@@ -1,0 +1,23 @@
+Error occurred during prediction. Error: Prediction data validation failed: 1 validation error for DataValidator
+data
+  Target 'prediction' contains null or non-numeric data. (type=value_error)
+Traceback (most recent call last):
+  File "C:\Users\abbus\Documents\GitRepos\rt_repos\rt-models\forecasting\rt_forecasting_nbeats_with_pretraining\src\data_models\prediction_data_model.py", line 123, in validate_predictions
+    validated_data = DataValidator(data=predictions)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "pydantic\main.py", line 341, in pydantic.main.BaseModel.__init__
+pydantic.error_wrappers.ValidationError: 1 validation error for DataValidator
+data
+  Target 'prediction' contains null or non-numeric data. (type=value_error)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\abbus\Documents\GitRepos\rt_repos\rt-models\forecasting\rt_forecasting_nbeats_with_pretraining\src\predict.py", line 154, in run_batch_predictions
+    validated_predictions = validate_predictions(
+                            ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\abbus\Documents\GitRepos\rt_repos\rt-models\forecasting\rt_forecasting_nbeats_with_pretraining\src\data_models\prediction_data_model.py", line 126, in validate_predictions
+    raise ValueError(f"Prediction data validation failed: {str(exc)}") from exc
+ValueError: Prediction data validation failed: 1 validation error for DataValidator
+data
+  Target 'prediction' contains null or non-numeric data. (type=value_error)
