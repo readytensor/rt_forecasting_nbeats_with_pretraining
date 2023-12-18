@@ -7,8 +7,6 @@ import math
 import joblib
 import numpy as np
 import pandas as pd
-# from prophet import Prophet
-from multiprocessing import Pool, cpu_count
 from sklearn.exceptions import NotFittedError
 
 warnings.filterwarnings("ignore")
@@ -195,10 +193,8 @@ class Forecaster:
     def fit(self, training_data:np.ndarray, pre_training_data: Union[np.ndarray, None]=None,
             validation_split: Union[float, None]=0.15, verbose:int=1,
             max_epochs:int=2000):
-
-        """Fit the Forecaster to the training data.
-        A separate Prophet model is fit to each series that is contained
-        in the data.
+        """
+        Fit the Forecaster to the training data.
 
         Args:
             data (pandas.DataFrame): The features of the training data.
