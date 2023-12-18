@@ -5,7 +5,7 @@ from preprocessing.custom_transformers import TimeSeriesMinMaxScaler
 
 np.random.seed(1)
 
-MAX_NUM_PRETRAINING_SERIES = 150_000
+MAX_NUM_PRETRAINING_SERIES = 10_000
 
 def calculate_max_N(T: int, D: int, target_ram_gb: float) -> int:
     """
@@ -27,9 +27,6 @@ def calculate_max_N(T: int, D: int, target_ram_gb: float) -> int:
     max_N = target_ram_bytes / (T * D * element_size)
 
     return int(min(max_N, MAX_NUM_PRETRAINING_SERIES))
-
-# Example usage
-N = calculate_max_N(T=100, D=50, target_ram_gb=5)
 
 
 def generate_seasonal_factors(
@@ -191,6 +188,7 @@ def generate_noise(len_series: int, std_dev: float=0.02) -> np.ndarray:
         noise.append(factor)
     return np.array(noise)
 
+
 def generate_synthetic_data(
         num_series: int, len_series: int, frequency: Frequency) -> np.ndarray:
     """
@@ -211,7 +209,6 @@ def generate_synthetic_data(
     for i in range(num_series):
         # Apply trend
         if np.random.rand() < 0.75:
-
             # Use multiplicative trend with 50% probability
             if np.random.rand() < 0.5:
                 trend_factors = generate_multiplicative_trend_factors(len_series)
@@ -250,7 +247,6 @@ def generate_seasonality_for_frequency(
     Returns:
         np.ndarray: Seasonality factors.
     """
-    
     if frequency == Frequency.QUARTERLY:
         # Assuming quarterly frequency for seasonality (num_periods=4, len_per_period=3)
         return generate_seasonal_factors(len_series, 4, 3)
@@ -265,19 +261,16 @@ def generate_seasonality_for_frequency(
         # Example: weekly seasonality within daily data
         rand_num = np.random.rand()
         if rand_num < 0.5:
-            # 7-day week
-            week_len = 7
+            week_len = 7    # 7-day week
         elif rand_num < 0.75:
-            # 6-day week
-            week_len = 6
+            week_len = 6    # 6-day week
         else:
-            # 5-day week
-            week_len = 5
+            week_len = 5    # 5-day week
         # Weekday seasonality for weekly seasonality
         weekday_factors = generate_seasonal_factors(len_series, week_len, 1)
-        # Week of year seasonality for annual seasonality
-        wk_in_year_factors = generate_seasonal_factors(len_series, 52, week_len)
-        return weekday_factors * wk_in_year_factors
+        # # Week of year seasonality for annual seasonality
+        weekday_factors *= generate_seasonal_factors(len_series, 52, week_len)
+        return weekday_factors
     elif frequency == Frequency.HOURLY:
         # Determine the length of the hourly pattern
         rand_num = np.random.rand()
@@ -336,7 +329,6 @@ def get_pretraining_data(
     synthetic_data = scaler.fit_transform(synthetic_data)
 
     return synthetic_data
-
 
 
 if __name__ == "__main__":
