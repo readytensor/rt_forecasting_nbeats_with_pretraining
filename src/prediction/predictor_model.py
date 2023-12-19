@@ -191,7 +191,7 @@ class Forecaster:
         return history
 
     def fit(self, training_data:np.ndarray, pre_training_data: Union[np.ndarray, None]=None,
-            validation_split: Union[float, None]=0.15, verbose:int=1,
+            validation_split: Union[float, None]=0.15, verbose:int=0,
             max_epochs:int=2000):
         """
         Fit the Forecaster to the training data.
@@ -207,7 +207,7 @@ class Forecaster:
                 verbose=verbose,
                 max_epochs=max_epochs
             )
-        
+
         print("Training on main data...")
         history = self._train_on_data(
             data=training_data,
