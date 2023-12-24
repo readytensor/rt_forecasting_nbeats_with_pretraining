@@ -21,7 +21,7 @@ The following are the requirements for using your data with this model:
 
 Here are the highlights of this implementation: <br/>
 
-- A **NBeats Forecaster** algorithm built using **TensorFlow / Keras**
+- A **NBeats Forecaster** algorithm built using **TensorFlow / Keras**. The implementation also contains workflow to pretrain the model on synthetic data and then fine-tune on the actual data.
   Additionally, the implementation contains the following features:
 - **Data Validation**: Pydantic data validation is used for the schema, training and test files, as well as the inference request data.
 - **Error handling and logging**: Python's logging module is used for logging and key functions include exception handling.
