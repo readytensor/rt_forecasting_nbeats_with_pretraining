@@ -19,6 +19,16 @@ The following are the requirements for using your data with this model:
 
 ---
 
+### Covariates Support:
+
+- Past ✅
+- Future ❌
+- Static ✅
+
+> > NBeats model doesnt explicitly support static covariates. This implementation treats static covariates as past covariates.
+
+---
+
 Here are the highlights of this implementation: <br/>
 
 - A **NBeats Forecaster** algorithm built using **TensorFlow / Keras**. The implementation also contains workflow to pretrain the model on synthetic data and then fine-tune on the actual data.
