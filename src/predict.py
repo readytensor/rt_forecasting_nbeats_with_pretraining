@@ -90,8 +90,8 @@ def run_batch_predictions(
     """
 
     try:
-        start = time.time()
         logger.info("Making batch predictions...")
+        start = time.time()
 
         logger.info("Loading schema...")
         data_schema = load_saved_schema(saved_schema_dir_path)
