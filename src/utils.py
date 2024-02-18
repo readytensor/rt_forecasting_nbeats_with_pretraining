@@ -1,6 +1,8 @@
 import json
 import os
 import random
+import tracemalloc
+import time
 from typing import Any, Dict, List, Tuple, Union
 import numpy as np
 import pandas as pd
@@ -103,6 +105,7 @@ def cast_time_col(data: pd.DataFrame, time_col: str, dtype: str) -> pd.DataFrame
         raise ValueError(f"Invalid data type for time column: {dtype}")
     return data
 
+
 def set_seeds(seed_value: int) -> None:
     """
     Set the random seeds for Python, NumPy, etc. to ensure
@@ -162,7 +165,6 @@ def split_train_val_by_series(
     val_data = data[data[id_col].isin(val_series_ids)]
 
     return train_data, val_data
-
 
 
 def save_dataframe_as_csv(dataframe: pd.DataFrame, file_path: str) -> None:
@@ -238,3 +240,51 @@ def make_serializable(obj: Any) -> Union[int, float, List[Union[int, float]], An
         return obj.tolist()
     else:
         return json.JSONEncoder.default(None, obj)
+
+
+class TimeAndMemoryTracker(object):
+    """
+    This class serves as a context manager to track time and
+    memory (CPU and GPU if available) allocated by code executed inside it.
+    """
+
+    def __init__(self, logger):
+        self.logger = logger
+        self.gpu_memory_usage_start = None
+        self.gpu_memory_usage_peak = None
+
+    def _get_gpu_memory_usage(self):
+        """Returns the current GPU memory usage if possible."""
+        memory_info = tf.config.experimental.get_memory_info("GPU:0")
+        return memory_info[
+            "current"
+        ]  # This may need adjustments based on your GPU setup
+
+    def __enter__(self):
+        tracemalloc.start()
+        self.start_time = time.time()
+        if tf.config.list_physical_devices("GPU"):
+            self.gpu_memory_usage_start = self._get_gpu_memory_usage()
+            self.gpu_memory_usage_peak = self.gpu_memory_usage_start
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.end_time = time.time()
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        elapsed_time = self.end_time - self.start_time
+        cpu_peak_memory = peak / 1024**2  # Convert to MB
+
+        self.logger.info(f"Execution time: {elapsed_time:.2f} seconds")
+        self.logger.info(f"CPU Memory allocated (peak): {cpu_peak_memory:.2f} MB")
+
+        if tf.config.list_physical_devices("GPU"):
+            current_gpu_memory_usage = self._get_gpu_memory_usage()
+            gpu_peak_memory = (
+                max(self.gpu_memory_usage_peak, current_gpu_memory_usage)
+                - self.gpu_memory_usage_start
+            )
+            self.logger.info(
+                f"GPU Memory allocated (peak estimated): {gpu_peak_memory / 1024**2:.2f} MB"
+            )
