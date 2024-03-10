@@ -98,7 +98,7 @@ def transform_data(
 def get_encode_len(train_data, data_schema, encode_to_decode_ratio):
     history_len = train_data[data_schema.time_col].nunique()
     decode_len = data_schema.forecast_length
-    if history_len <= 2 * decode_len:
+    if history_len < 2 * decode_len:
         raise ValueError(
             f"History length ({history_len}) must be at least 2x forecast length ({decode_len})"
         )
