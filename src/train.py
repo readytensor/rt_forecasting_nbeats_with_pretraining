@@ -91,10 +91,6 @@ def run_training(
                 training_pipeline, validated_data
             )
 
-            # Save pipelines
-            logger.info("Saving pipelines...")
-            save_pipelines(trained_pipeline, inference_pipeline, preprocessing_dir_path)
-
             # # use default hyperparameters to train model
             logger.info("Training forecaster...")
             forecaster = train_predictor_model(
@@ -103,6 +99,10 @@ def run_training(
                 frequency=data_schema.frequency,
                 hyperparameters=default_hyperparameters,
             )
+
+        # Save pipelines
+        logger.info("Saving pipelines...")
+        save_pipelines(trained_pipeline, inference_pipeline, preprocessing_dir_path)
 
         # save predictor model
         logger.info("Saving forecaster...")
