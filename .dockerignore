@@ -4,4 +4,4 @@ ml_vol/outputs/
 
 docker-compose.yaml
 build_and_push.sh
-venv/
+venv

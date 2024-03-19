@@ -1,7 +1,8 @@
 import json
 import os
 import random
-import tracemalloc
+import threading
+import psutil
 import time
 from typing import Any, Dict, List, Tuple, Union
 import numpy as np
@@ -242,49 +243,92 @@ def make_serializable(obj: Any) -> Union[int, float, List[Union[int, float]], An
         return json.JSONEncoder.default(None, obj)
 
 
-class TimeAndMemoryTracker(object):
+def get_peak_memory_usage():
+    """
+    Returns the peak memory usage by current cuda device (in MB) if available
+    """
+    if not tf.config.list_physical_devices("GPU"):
+        return None
+
+    current_device = "GPU:0"
+    peak_memory = tf.config.experimental.get_memory_info(current_device)["peak"]
+    return peak_memory / (1024 * 1024)
+
+
+class ResourceTracker(object):
     """
     This class serves as a context manager to track time and
-    memory (CPU and GPU if available) allocated by code executed inside it.
+    memory allocated by code executed inside it.
     """
 
-    def __init__(self, logger):
+    def __init__(self, logger, monitoring_interval):
         self.logger = logger
-        self.gpu_memory_usage_start = None
-        self.gpu_memory_usage_peak = None
-
-    def _get_gpu_memory_usage(self):
-        """Returns the current GPU memory usage if possible."""
-        memory_info = tf.config.experimental.get_memory_info("GPU:0")
-        return memory_info[
-            "current"
-        ]  # This may need adjustments based on your GPU setup
+        self.monitor = MemoryMonitor(logger=logger, interval=monitoring_interval)
 
     def __enter__(self):
-        tracemalloc.start()
         self.start_time = time.time()
-        if tf.config.list_physical_devices("GPU"):
-            self.gpu_memory_usage_start = self._get_gpu_memory_usage()
-            self.gpu_memory_usage_peak = self.gpu_memory_usage_start
+        self.monitor.start()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.end_time = time.time()
-        _, peak = tracemalloc.get_traced_memory()
-        tracemalloc.stop()
+        self.monitor.stop()
+        cuda_peak = get_peak_memory_usage()
+        if cuda_peak:
+            self.logger.info(f"CUDA Memory allocated (peak): {cuda_peak:.2f} MB")
 
         elapsed_time = self.end_time - self.start_time
-        cpu_peak_memory = peak / 1024**2  # Convert to MB
 
         self.logger.info(f"Execution time: {elapsed_time:.2f} seconds")
-        self.logger.info(f"CPU Memory allocated (peak): {cpu_peak_memory:.2f} MB")
 
-        if tf.config.list_physical_devices("GPU"):
-            current_gpu_memory_usage = self._get_gpu_memory_usage()
-            gpu_peak_memory = (
-                max(self.gpu_memory_usage_peak, current_gpu_memory_usage)
-                - self.gpu_memory_usage_start
-            )
-            self.logger.info(
-                f"GPU Memory allocated (peak estimated): {gpu_peak_memory / 1024**2:.2f} MB"
-            )
+
+class MemoryMonitor:
+    peak_memory = 0  # Class variable to store peak memory usage
+
+    def __init__(self, interval=20.0, logger=print):
+        self.interval = interval  # Time between executions in seconds
+        self.timer = None  # Placeholder for the timer object
+        self.logger = logger
+        self.lock = threading.Lock()  # Lock for thread-safe updates to class variables
+
+    def monitor_memory(self):
+        process = psutil.Process(os.getpid())
+        children = process.children(recursive=True)
+        total_memory = process.memory_info().rss
+
+        for child in children:
+            total_memory += child.memory_info().rss
+
+        with self.lock:
+            # Check if the current memory usage is a new peak and update accordingly
+            MemoryMonitor.peak_memory = max(MemoryMonitor.peak_memory, total_memory)
+
+    def _schedule_monitor(self):
+        """Internal method to execute monitor_memory and schedule the next execution"""
+        self.monitor_memory()
+        self.schedule_next()
+
+    def schedule_next(self):
+        """Schedules the next execution of the monitor task"""
+        if not self.timer or not self.timer.is_alive():
+            self.timer = threading.Timer(self.interval, self._schedule_monitor)
+            self.timer.start()
+
+    def start(self):
+        """Starts the periodic monitoring"""
+        if not self.timer or not self.timer.is_alive():
+            threading.Thread(target=self._schedule_monitor).start()
+
+    def stop(self):
+        """Stops the periodic monitoring"""
+        if self.timer and self.timer.is_alive():
+            self.timer.cancel()
+            self.timer = None
+        self.logger.info(
+            f"CPU Memory allocated (peak): {MemoryMonitor.peak_memory / (1024**2):.2f} MB"
+        )
+
+    @classmethod
+    def get_peak_memory(cls):
+        """Returns the peak memory usage"""
+        return cls.peak_memory
