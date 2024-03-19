@@ -134,7 +134,6 @@ def run_batch_predictions(
             predictor_model = load_predictor_model(predictor_dir_path)
 
             logger.info("Making predictions...")
-
             predictions_arr = predict_with_model(
                 predictor_model, transformed_train_data
             )

@@ -1,11 +1,10 @@
 import numpy as np
-import sys
 from data_models.schema_validator import Frequency
 from preprocessing.custom_transformers import TimeSeriesMinMaxScaler
 
 np.random.seed(1)
 
-MAX_NUM_PRETRAINING_SERIES = 75_000
+MAX_NUM_PRETRAINING_SERIES = 60_000
 
 def calculate_max_N(T: int, D: int, target_ram_gb: float) -> int:
     """
@@ -209,6 +208,7 @@ def generate_synthetic_data(
     for i in range(num_series):
         # Apply trend
         if np.random.rand() < 0.75:
+
             # Use multiplicative trend with 50% probability
             if np.random.rand() < 0.5:
                 trend_factors = generate_multiplicative_trend_factors(len_series)
@@ -261,16 +261,19 @@ def generate_seasonality_for_frequency(
         # Example: weekly seasonality within daily data
         rand_num = np.random.rand()
         if rand_num < 0.5:
-            week_len = 7    # 7-day week
+            # 7-day week
+            week_len = 7
         elif rand_num < 0.75:
-            week_len = 6    # 6-day week
+            # 6-day week
+            week_len = 6
         else:
-            week_len = 5    # 5-day week
+            # 5-day week
+            week_len = 5
         # Weekday seasonality for weekly seasonality
         weekday_factors = generate_seasonal_factors(len_series, week_len, 1)
-        # # Week of year seasonality for annual seasonality
-        weekday_factors *= generate_seasonal_factors(len_series, 52, week_len)
-        return weekday_factors
+        # Week of year seasonality for annual seasonality
+        wk_in_year_factors = generate_seasonal_factors(len_series, 52, week_len)
+        return weekday_factors * wk_in_year_factors
     elif frequency == Frequency.HOURLY:
         # Determine the length of the hourly pattern
         rand_num = np.random.rand()
@@ -311,7 +314,7 @@ def get_pretraining_data(
                     containing the synthetic time series data and exogenous features.
     """
     # Calculate # of samples to generate
-    num_series = calculate_max_N(series_len, 1 + num_exog, target_ram_gb=4.0)
+    num_series = calculate_max_N(series_len, 1 + num_exog, target_ram_gb=3.0)
     # Generate base synthetic data
     synthetic_data = generate_synthetic_data(num_series, series_len, frequency)
 
@@ -343,7 +346,3 @@ if __name__ == "__main__":
     
     # sample_trend_factors = generate_trend_factors(10)
     # print(sample_trend_factors)
-
-
-
-
