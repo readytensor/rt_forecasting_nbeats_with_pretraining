@@ -267,7 +267,7 @@ class ResourceTracker(object):
 
     def __enter__(self):
         self.start_time = time.time()
-        self.start_time = time.time()
+        tracemalloc.start()
         self.monitor.start()
         return self
 
