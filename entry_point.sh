@@ -12,12 +12,12 @@ echo "Running $command"
 case $command in
   # If the command is "train", run the train.py script with all remaining arguments
   train)
-    python /opt/src/train.py "$@"
+    python3 /opt/src/train.py "$@"
     ;;
 
   # If the command is "predict", run the predict.py script with all remaining arguments
   predict)
-    python /opt/src/predict.py "$@"
+    python3 /opt/src/predict.py "$@"
     ;;
 
   # If the command is "standby", keep the container running without doing anything
