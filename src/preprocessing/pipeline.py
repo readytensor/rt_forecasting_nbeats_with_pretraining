@@ -85,7 +85,7 @@ def create_preprocess_pipelines(
             ),
             (
                 "tsmixer",
-                transformers.TimeSeriesMixer(n_series=10, n_generated_windows=5000),
+                transformers.TimeSeriesMixer(n_series=5, n_generated_windows=1000),
             ),
             ("left_right_flipper", transformers.LeftRightFlipper(axis_to_flip=1)),
             (
