@@ -3,6 +3,7 @@
 NBeats Forecasting Model with Pretraining as per Ready Tensor specifications.
 The preprocessing pipeline incorporates TS Mixing which is a data augmentation technique involving creating convex combinations of 2 or more series randomly selected from the original data. 
 Model is pretrained using synthetically generated data and then fine-tuned on the actual data. Synthetic data is generated to represent the most dominant expected patterns in the data given it's frequency and seasonality. For example for daily level data, day of the week and week of the year seasonalities are injected along with trend, random walk, and noise.
+There are two branches in this repo: the `main` branch does not include TSMixing, and the `tsmix` branch includes it. 
 
 ## Project Description
 
