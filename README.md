@@ -1,4 +1,4 @@
-# NBeats Forecasting Model with Pretraining
+# NBeats Forecasting Model with Pretraining and TSMixing
 
 NBeats Forecasting Model with Pretraining as per Ready Tensor specifications.
 The preprocessing pipeline incorporates TS Mixing which is a data augmentation technique involving creating convex combinations of 2 or more series randomly selected from the original data. 
