@@ -75,7 +75,6 @@ def create_preprocess_pipelines(
     # training-specific steps
     training_steps.extend(
         [
-            ("kernel_synth", transformers.KernelSynthesizer(num_kernel_samples=3)),
             (
                 "window_generator",
                 transformers.TimeSeriesWindowGenerator(
@@ -84,6 +83,7 @@ def create_preprocess_pipelines(
                     max_windows=10000,
                 ),
             ),
+            ("kernel_synth", transformers.KernelSynthesizer(n_kernels=5)),
             ("left_right_flipper", transformers.LeftRightFlipper(axis_to_flip=1)),
             (
                 "minmax_scaler",

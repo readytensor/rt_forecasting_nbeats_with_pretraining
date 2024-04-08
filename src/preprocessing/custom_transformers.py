@@ -373,96 +373,77 @@ class TimeSeriesMixer(BaseEstimator, TransformerMixin):
 
 
 class KernelSynthesizer(BaseEstimator, TransformerMixin):
-    """
-    Transformer that generates synthetic time series data based on Gaussian processes
-    with combined kernels. Each time series in the dataset is augmented by generating
-    synthetic series that mimic the statistical properties of the input series.
-
-    The transformer supports multiple covariates and generates synthetic series
-    independently for each covariate in each time series. The final kernel for
-    synthetic generation is constructed by randomly combining a set of base kernels
-    via addition or multiplication, which allows capturing various time series
-    behaviors such as trends, local variations, and seasonality.
-
-    Attributes:
-        num_samples (int): The number of base kernels to combine for synthetic series generation.
-        length_scale (float): The length scale parameter for the RBF and Periodic kernels,
-                              controlling the smoothness and periodicity.
-        periodicity (float): The periodicity parameter for the Periodic kernel, controlling
-                             the frequency of the seasonal pattern.
-    """
-
-    def __init__(self, num_kernel_samples=3, length_scale=1.0, periodicity=3.0):
+    def __init__(self, n_kernels=5, kernel_bank=None):
         """
-        Initializes the KernelSynthesizer.
+        Initialize the WindowedKernelSynthesizer.
 
-        Args:
-            num_kernel_samples (int): The number of base kernels to sample and combine for
-                               generating synthetic series.
-            length_scale (float): The length scale parameter for the RBF and Periodic kernels.
-            periodicity (float): The periodicity parameter for the Periodic kernel.
+        Parameters:
+        - window_size (int): The size of each window to extract from the series.
+        - step_size (int): The step size between the start of each window.
+        - n_kernels (int): Number of kernels to sample.
+        - kernel_bank (list): List of kernels to choose from.
         """
-        self.num_kernel_samples = num_kernel_samples
-        self.linear_kernel = DotProduct() + WhiteKernel()
-        self.rbf_kernel = RBF(length_scale=length_scale)
-        self.periodic_kernel = ExpSineSquared(
-            length_scale=length_scale, periodicity=periodicity
+        self.n_kernels = n_kernels
+        self.kernel_bank = (
+            kernel_bank
+            if kernel_bank is not None
+            else [
+                # Linear kernels with different sigma_0 values
+                DotProduct(sigma_0=1.0),
+                DotProduct(sigma_0=0.1),
+                # RBF kernels with different length scales
+                RBF(length_scale=1.0),
+                RBF(length_scale=0.1),
+                RBF(length_scale=10.0),
+                # Periodic kernels with different length scales and periodicities
+                ExpSineSquared(length_scale=1.0, periodicity=3.0),
+                ExpSineSquared(length_scale=0.5, periodicity=1.0),
+                ExpSineSquared(length_scale=2.0, periodicity=5.0),
+                ExpSineSquared(length_scale=10.0, periodicity=2.0),
+            ]
         )
-
-    def _combined_kernel(self, kernel_list):
-        sampled_kernels = np.random.choice(
-            kernel_list, size=self.num_kernel_samples, replace=True
-        )
-        combined = None
-        for kernel in sampled_kernels:
-            if combined is None:
-                combined = kernel
-            else:
-                # Randomly decide to add or multiply the next kernel
-                if np.random.rand() > 0.5:
-                    combined += kernel
-                else:
-                    combined *= kernel
-        return combined
 
     def fit(self, X, y=None):
+        """
+        Fit method for the transformer. This transformer does not learn anything from the data
+        and hence fit is a no-op.
+        """
         return self
 
     def transform(self, X):
         """
-        Generates synthetic time series data for each series and covariate in the input data.
+        Generates synthetic time series data for each window in the input data.
 
-        Args:
-            X (np.ndarray): The input time-series data of shape [N, T, D], where N is the number
-                            of series, T is the time length, and D is the number of features (covariates).
+        Parameters:
+        - X (np.ndarray): The input time-series data of windows with shape [n, w, d].
 
         Returns:
-            np.ndarray: The synthetic time-series data with the same shape as the input.
-                        Each series is independently augmented with synthetic data based on
-                        the combined kernels.
+        - np.ndarray: The synthetic time-series data for each window, maintaining the input shape.
         """
+        n, w, d = X.shape
+        n = min(n // 5, 300)
+        synthetic_series = np.zeros((n, w, d))
 
-        # X is expected to be a 3D array (N, T, D)
-        N, T, D = X.shape
-        synthetic_series = np.zeros((N, T, D))
+        for i in range(n):
+            for dim in range(d):
+                # Sample kernels and combine them
+                sampled_kernels = np.random.choice(
+                    self.kernel_bank, size=self.n_kernels, replace=True
+                )
+                combined_kernel = sampled_kernels[0]
+                for k in sampled_kernels[1:]:
+                    if np.random.rand() > 0.5:
+                        combined_kernel += k
+                    else:
+                        combined_kernel *= k
 
-        for i in range(N):
-            for d in range(D):
-                # Generate synthetic series for each series in the dataset
-                # For simplicity, we use the same kernel combination for each covariate
-                kernel_list = [
-                    self.linear_kernel,
-                    self.rbf_kernel,
-                    self.periodic_kernel,
-                ]
-                final_kernel = self._combined_kernel(kernel_list)
-                gp = GaussianProcessRegressor(kernel=final_kernel)
+                # Create a GP model with the combined kernel
+                gp = GaussianProcessRegressor(kernel=combined_kernel, random_state=42)
 
-                # Assuming evenly spaced time points
-                time_points = np.linspace(0, T - 1, T).reshape(-1, 1)
-                gp.fit(time_points, X[i, :, d])  # Fit to each series independently
-                synthetic_series[i, :, d] = gp.sample_y(time_points, 1).flatten()
-
+                # Assuming evenly spaced time points within each window
+                time_points = np.linspace(0, w - 1, w).reshape(-1, 1)
+                # Sample synthetic data from the GP model for the current window and dimension
+                synthetic_series[i, :, dim] = gp.sample_y(time_points, 1).flatten()
         return synthetic_series
 
 
