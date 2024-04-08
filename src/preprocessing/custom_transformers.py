@@ -6,9 +6,9 @@ from sklearn.gaussian_process.kernels import (
     RBF,
     ExpSineSquared,
     DotProduct,
-    WhiteKernel,
 )
 from sklearn.gaussian_process import GaussianProcessRegressor
+from tqdm import tqdm
 
 
 class ColumnSelector(BaseEstimator, TransformerMixin):
@@ -424,7 +424,7 @@ class KernelSynthesizer(BaseEstimator, TransformerMixin):
         n = min(n // 5, 300)
         synthetic_series = np.zeros((n, w, d))
 
-        for i in range(n):
+        for i in tqdm(range(n), desc="Generating synthetic series"):
             for dim in range(d):
                 # Sample kernels and combine them
                 sampled_kernels = np.random.choice(
