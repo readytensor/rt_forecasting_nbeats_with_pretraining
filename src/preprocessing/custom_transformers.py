@@ -1,10 +1,14 @@
-from typing import List, Union
-
+from typing import List
 import numpy as np
 import pandas as pd
-import sys
-import random
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.gaussian_process.kernels import (
+    RBF,
+    ExpSineSquared,
+    DotProduct,
+    WhiteKernel,
+)
+from sklearn.gaussian_process import GaussianProcessRegressor
 
 
 class ColumnSelector(BaseEstimator, TransformerMixin):
@@ -100,7 +104,7 @@ class TypeCaster(BaseEstimator, TransformerMixin):
                 # all values are null. so no-op
                 pass
         return data
-    
+
 
 class TimeColCaster(BaseEstimator, TransformerMixin):
     """
@@ -115,7 +119,7 @@ class TimeColCaster(BaseEstimator, TransformerMixin):
 
         Args:
             time_col (str): Name of the time field.
-            cast_type (str): Data type to which the specified variables 
+            cast_type (str): Data type to which the specified variables
                              will be cast.
         """
         super().__init__()
@@ -165,11 +169,12 @@ class DataFrameSorter(BaseEstimator, TransformerMixin):
             sort_columns : list of str
                 List of column names to sort by.
             ascending : list of bool
-                List of boolean values corresponding to each column in `sort_columns`. 
+                List of boolean values corresponding to each column in `sort_columns`.
                 Each value indicates whether to sort the corresponding column in ascending order.
         """
-        assert len(sort_columns) == len(ascending), \
-            "sort_columns and ascending must be of the same length"
+        assert len(sort_columns) == len(
+            ascending
+        ), "sort_columns and ascending must be of the same length"
         self.sort_columns = sort_columns
         self.ascending = ascending
 
@@ -208,7 +213,6 @@ class ReshaperToThreeD(BaseEstimator, TransformerMixin):
         self.fitted_value_columns = None
         self.time_periods = None
 
-    
     def fit(self, X, y=None):
         self.id_vals = X[[self.id_col]].drop_duplicates().sort_values(by=self.id_col)
         self.id_vals.reset_index(inplace=True, drop=True)
@@ -223,24 +227,24 @@ class ReshaperToThreeD(BaseEstimator, TransformerMixin):
         X = X[self.value_columns].values.reshape((N, T, D))
         return X
 
-
     def inverse_transform(self, preds_df):
 
         time_cols = list(preds_df.columns)
-        preds_df = pd.concat([self.id_vals, preds_df], axis = 1, ignore_index=True)
+        preds_df = pd.concat([self.id_vals, preds_df], axis=1, ignore_index=True)
 
         cols = self.id_columns + time_cols
         preds_df.columns = cols
 
         # unpivot given dataframe
-        preds_df = pd.melt(preds_df,
+        preds_df = pd.melt(
+            preds_df,
             id_vars=self.id_columns,
             value_vars=time_cols,
-            var_name = self.time_column,
-            value_name = self.value_columns[0]
-            )
-        
-        return  preds_df
+            var_name=self.time_column,
+            value_name=self.value_columns[0],
+        )
+
+        return preds_df
 
 
 class TimeSeriesWindowGenerator(BaseEstimator, TransformerMixin):
@@ -248,7 +252,7 @@ class TimeSeriesWindowGenerator(BaseEstimator, TransformerMixin):
     A transformer for generating windows from time-series data.
     """
 
-    def __init__(self, window_size: int, stride: int=1, max_windows: int = 10000):
+    def __init__(self, window_size: int, stride: int = 1, max_windows: int = 10000):
         """
         Initializes the TimeSeriesWindowGenerator.
 
@@ -263,7 +267,7 @@ class TimeSeriesWindowGenerator(BaseEstimator, TransformerMixin):
     def fit(self, X, y=None):
         """
         No-op. This transformer does not require fitting.
-        
+
         Returns:
             self
         """
@@ -283,7 +287,9 @@ class TimeSeriesWindowGenerator(BaseEstimator, TransformerMixin):
 
         # Validate window size and stride
         if self.window_size > time_length:
-            raise ValueError("Window size must be less than or equal to the time dimension length")
+            raise ValueError(
+                "Window size must be less than or equal to the time dimension length"
+            )
 
         # Calculate the total number of windows per series
         n_windows_per_series = 1 + (time_length - self.window_size) // self.stride
@@ -298,12 +304,166 @@ class TimeSeriesWindowGenerator(BaseEstimator, TransformerMixin):
         windows = X[:, window_indices, :]
 
         # Reshape to the desired output format [N' (total windows across all series), W, D]
-        windows = windows.transpose(1, 0, 2, 3).reshape(-1, self.window_size, n_features)
+        windows = windows.transpose(1, 0, 2, 3).reshape(
+            -1, self.window_size, n_features
+        )
 
         if windows.shape[0] > self.max_windows:
-            indices = np.random.choice(windows.shape[0], self.max_windows, replace=False)
+            indices = np.random.choice(
+                windows.shape[0], self.max_windows, replace=False
+            )
             windows = windows[indices]
         return windows
+
+
+class TimeSeriesMixer(BaseEstimator, TransformerMixin):
+    """Transformer for applying TSMixing by taking a random weighted average of the input series."""
+
+    def __init__(self, n_series: int, n_generated_windows: int):
+        """Initializes the TimeSeriesMixer.
+        Args:
+            n_series (int): The number of series to mix.
+            n_generated_windows (int): The number of mixed windows to generate.
+        """
+        self.n_series = n_series
+        self.n_generated_windows = n_generated_windows
+
+    def fit(self, X: np.ndarray, y=None):
+        return self
+
+    def transform(self, X: np.ndarray) -> np.ndarray:
+        """
+        Transforms the input time-series data by applying TSMixing.
+
+        Args:
+            X (np.ndarray): Input time-series data of shape [N, T, D].
+
+        Returns:
+            np.ndarray: Transformed data of shape [n_generated_windows, T, D].
+        """
+        n_windows, _, _ = X.shape
+        mixed_series_list = []
+
+        for _ in range(self.n_generated_windows):
+            # Generate random weights for each series for the current window
+            weights = np.random.dirichlet(np.ones(self.n_series), size=1).reshape(
+                -1, 1, 1
+            )
+
+            # Randomly select series indices to mix
+            selected_series_indices = np.random.choice(
+                n_windows, self.n_series, replace=True
+            )
+
+            selected_series = X[selected_series_indices]
+
+            # Initialize an empty array for the mixed series of the current window
+            mixed_series = np.sum(selected_series * weights, axis=0)
+
+            # mixed_series = (selected_series * weights).sum(axis=0)
+
+            # Append the mixed series to the list
+            mixed_series_list.append(mixed_series)
+
+        # Stack the mixed series to form the output array
+        mixed_series_output = np.array(mixed_series_list)
+        transformed_data = np.concatenate([X, mixed_series_output], axis=0)
+
+        return transformed_data
+
+
+class KernelSynthesizer(BaseEstimator, TransformerMixin):
+    """
+    Transformer that generates synthetic time series data based on Gaussian processes
+    with combined kernels. Each time series in the dataset is augmented by generating
+    synthetic series that mimic the statistical properties of the input series.
+
+    The transformer supports multiple covariates and generates synthetic series
+    independently for each covariate in each time series. The final kernel for
+    synthetic generation is constructed by randomly combining a set of base kernels
+    via addition or multiplication, which allows capturing various time series
+    behaviors such as trends, local variations, and seasonality.
+
+    Attributes:
+        num_samples (int): The number of base kernels to combine for synthetic series generation.
+        length_scale (float): The length scale parameter for the RBF and Periodic kernels,
+                              controlling the smoothness and periodicity.
+        periodicity (float): The periodicity parameter for the Periodic kernel, controlling
+                             the frequency of the seasonal pattern.
+    """
+
+    def __init__(self, num_kernel_samples=3, length_scale=1.0, periodicity=3.0):
+        """
+        Initializes the KernelSynthesizer.
+
+        Args:
+            num_kernel_samples (int): The number of base kernels to sample and combine for
+                               generating synthetic series.
+            length_scale (float): The length scale parameter for the RBF and Periodic kernels.
+            periodicity (float): The periodicity parameter for the Periodic kernel.
+        """
+        self.num_kernel_samples = num_kernel_samples
+        self.linear_kernel = DotProduct() + WhiteKernel()
+        self.rbf_kernel = RBF(length_scale=length_scale)
+        self.periodic_kernel = ExpSineSquared(
+            length_scale=length_scale, periodicity=periodicity
+        )
+
+    def _combined_kernel(self, kernel_list):
+        sampled_kernels = np.random.choice(
+            kernel_list, size=self.num_kernel_samples, replace=True
+        )
+        combined = None
+        for kernel in sampled_kernels:
+            if combined is None:
+                combined = kernel
+            else:
+                # Randomly decide to add or multiply the next kernel
+                if np.random.rand() > 0.5:
+                    combined += kernel
+                else:
+                    combined *= kernel
+        return combined
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        """
+        Generates synthetic time series data for each series and covariate in the input data.
+
+        Args:
+            X (np.ndarray): The input time-series data of shape [N, T, D], where N is the number
+                            of series, T is the time length, and D is the number of features (covariates).
+
+        Returns:
+            np.ndarray: The synthetic time-series data with the same shape as the input.
+                        Each series is independently augmented with synthetic data based on
+                        the combined kernels.
+        """
+
+        # X is expected to be a 3D array (N, T, D)
+        N, T, D = X.shape
+        synthetic_series = np.zeros((N, T, D))
+
+        for i in range(N):
+            for d in range(D):
+                # Generate synthetic series for each series in the dataset
+                # For simplicity, we use the same kernel combination for each covariate
+                kernel_list = [
+                    self.linear_kernel,
+                    self.rbf_kernel,
+                    self.periodic_kernel,
+                ]
+                final_kernel = self._combined_kernel(kernel_list)
+                gp = GaussianProcessRegressor(kernel=final_kernel)
+
+                # Assuming evenly spaced time points
+                time_points = np.linspace(0, T - 1, T).reshape(-1, 1)
+                gp.fit(time_points, X[i, :, d])  # Fit to each series independently
+                synthetic_series[i, :, d] = gp.sample_y(time_points, 1).flatten()
+
+        return synthetic_series
 
 
 class SeriesLengthTrimmer(BaseEstimator, TransformerMixin):
@@ -325,7 +485,7 @@ class SeriesLengthTrimmer(BaseEstimator, TransformerMixin):
         """
         self.trimmed_len = trimmed_len
 
-    def fit(self, X: np.ndarray, y: None = None) -> 'SeriesLengthTrimmer':
+    def fit(self, X: np.ndarray, y: None = None) -> "SeriesLengthTrimmer":
         """Fit method for the transformer.
 
         This transformer does not learn anything from the data and hence fit is a no-op.
@@ -351,15 +511,15 @@ class SeriesLengthTrimmer(BaseEstimator, TransformerMixin):
         """
         _, time_length, _ = X.shape
         if time_length > self.trimmed_len:
-            X = X[:, -self.trimmed_len:, :]
+            X = X[:, -self.trimmed_len :, :]
         return X
-    
+
 
 class LeftRightFlipper(BaseEstimator, TransformerMixin):
     """
     A transformer that augments a dataset by adding a left-right flipped version of each tensor.
 
-    This transformer flips each tensor in the dataset along a specified axis and then concatenates 
+    This transformer flips each tensor in the dataset along a specified axis and then concatenates
     the flipped version with the original dataset, effectively doubling its size.
 
     Attributes:
@@ -375,9 +535,9 @@ class LeftRightFlipper(BaseEstimator, TransformerMixin):
         """
         self.axis_to_flip = axis_to_flip
 
-    def fit(self, X: np.ndarray, y: None = None) -> 'LeftRightFlipper':
+    def fit(self, X: np.ndarray, y: None = None) -> "LeftRightFlipper":
         """
-        Fit method for the transformer. This transformer does not learn anything from the data 
+        Fit method for the transformer. This transformer does not learn anything from the data
         and hence fit is a no-op.
 
         Args:
@@ -407,7 +567,7 @@ class LeftRightFlipper(BaseEstimator, TransformerMixin):
 class TimeSeriesMinMaxScaler(BaseEstimator, TransformerMixin):
     """
     Scales the history and forecast parts of a time-series based on history data.
-    
+
     The scaler is fitted using only the history part of the time-series and is
     then used to transform both the history and forecast parts. Values are scaled
     to a range and capped to an upper bound.
@@ -431,7 +591,7 @@ class TimeSeriesMinMaxScaler(BaseEstimator, TransformerMixin):
         self.max_vals_per_d = None
         self.range_per_d = None
 
-    def fit(self, X: np.ndarray, y=None) -> 'TimeSeriesMinMaxScaler':
+    def fit(self, X: np.ndarray, y=None) -> "TimeSeriesMinMaxScaler":
         """
         No-op
 
@@ -455,14 +615,18 @@ class TimeSeriesMinMaxScaler(BaseEstimator, TransformerMixin):
             np.ndarray: The transformed data of shape [N, T, D].
         """
         if self.encode_len > X.shape[1]:
-            raise ValueError(f"Expected sequence length for scaling >= {self.encode_len}."
-                             f" Found length {X.shape[1]}.")
+            raise ValueError(
+                f"Expected sequence length for scaling >= {self.encode_len}."
+                f" Found length {X.shape[1]}."
+            )
         # Calculate min, max, and range for scaling
-        self.min_vals_per_d = np.min(X[:, :self.encode_len, :], axis=1, keepdims=True)
-        self.max_vals_per_d = np.max(X[:, :self.encode_len, :], axis=1, keepdims=True)
+        self.min_vals_per_d = np.min(X[:, : self.encode_len, :], axis=1, keepdims=True)
+        self.max_vals_per_d = np.max(X[:, : self.encode_len, :], axis=1, keepdims=True)
         self.range_per_d = self.max_vals_per_d - self.min_vals_per_d
         self.range_per_d = np.where(self.range_per_d == 0, -1, self.range_per_d)
-        X_scaled = np.where(self.range_per_d == -1, 0, (X - self.min_vals_per_d) / self.range_per_d)
+        X_scaled = np.where(
+            self.range_per_d == -1, 0, (X - self.min_vals_per_d) / self.range_per_d
+        )
         X_scaled = np.clip(X_scaled, -self.upper_bound, self.upper_bound)
         return X_scaled
 
@@ -479,6 +643,6 @@ class TimeSeriesMinMaxScaler(BaseEstimator, TransformerMixin):
         rescaled_X = np.where(
             self.range_per_d[:, :, :1] == -1,
             X[:, :, :1] + self.min_vals_per_d[:, :, :1],
-            X[:, :, :1] * self.range_per_d[:, :, :1] + self.min_vals_per_d[:, :, :1]
+            X[:, :, :1] * self.range_per_d[:, :, :1] + self.min_vals_per_d[:, :, :1],
         )
         return rescaled_X

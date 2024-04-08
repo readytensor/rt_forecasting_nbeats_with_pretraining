@@ -8,14 +8,12 @@ from sklearn.pipeline import Pipeline
 
 from preprocessing import custom_transformers as transformers
 
+
 def create_preprocess_pipelines(
-    data_schema: Any,
-    preprocessing_config: dict,
-    encode_len: int,
-    use_exogenous: bool
+    data_schema: Any, preprocessing_config: dict, encode_len: int, use_exogenous: bool
 ) -> Tuple[Pipeline, Pipeline]:
     """
-    Constructs two preprocessing pipeline for time-series data: 
+    Constructs two preprocessing pipeline for time-series data:
         one for training and another inference.
 
     Args:
@@ -35,57 +33,83 @@ def create_preprocess_pipelines(
         covariates_to_use = data_schema.past_covariates + data_schema.static_covariates
     # Common steps for both train and inference pipelines
     common_steps = [
-        ("column_selector", transformers.ColumnSelector(
-            columns=(
-                [data_schema.id_col, data_schema.time_col, data_schema.target]
-                + covariates_to_use
-            )
-        )),
-        ("float_caster", transformers.TypeCaster(
-            vars=[data_schema.target] + covariates_to_use,
-            cast_type='float32'
-        )),
-        ("time_col_caster", transformers.TimeColCaster(
-            time_col=data_schema.time_col,
-            data_type=data_schema.time_col_dtype
-        )),
-        ("df_sorter", transformers.DataFrameSorter(
-            sort_columns=[data_schema.id_col, data_schema.time_col],
-            ascending=[True, True]
-        )),
-        ("reshaped_3d", transformers.ReshaperToThreeD(
-            id_col=data_schema.id_col,
-            time_col=data_schema.time_col,
-            value_columns=[data_schema.target]+covariates_to_use
-        ))
+        (
+            "column_selector",
+            transformers.ColumnSelector(
+                columns=(
+                    [data_schema.id_col, data_schema.time_col, data_schema.target]
+                    + covariates_to_use
+                )
+            ),
+        ),
+        (
+            "float_caster",
+            transformers.TypeCaster(
+                vars=[data_schema.target] + covariates_to_use, cast_type="float32"
+            ),
+        ),
+        (
+            "time_col_caster",
+            transformers.TimeColCaster(
+                time_col=data_schema.time_col, data_type=data_schema.time_col_dtype
+            ),
+        ),
+        (
+            "df_sorter",
+            transformers.DataFrameSorter(
+                sort_columns=[data_schema.id_col, data_schema.time_col],
+                ascending=[True, True],
+            ),
+        ),
+        (
+            "reshaped_3d",
+            transformers.ReshaperToThreeD(
+                id_col=data_schema.id_col,
+                time_col=data_schema.time_col,
+                value_columns=[data_schema.target] + covariates_to_use,
+            ),
+        ),
     ]
     training_steps = common_steps.copy()
     inference_steps = common_steps.copy()
     # training-specific steps
-    training_steps.extend([
-        ("window_generator", transformers.TimeSeriesWindowGenerator(
-            window_size=encode_len+data_schema.forecast_length,
-            stride=1,
-            max_windows=10000
-        )),
-        ("left_right_flipper", transformers.LeftRightFlipper(
-            axis_to_flip=1
-        )),
-        ("minmax_scaler", transformers.TimeSeriesMinMaxScaler(
-            encode_len=encode_len,
-            upper_bound=preprocessing_config["scaler_max_bound"],
-        ))
-    ])
+    training_steps.extend(
+        [
+            ("kernel_synth", transformers.KernelSynthesizer(num_kernel_samples=3)),
+            (
+                "window_generator",
+                transformers.TimeSeriesWindowGenerator(
+                    window_size=encode_len + data_schema.forecast_length,
+                    stride=1,
+                    max_windows=10000,
+                ),
+            ),
+            ("left_right_flipper", transformers.LeftRightFlipper(axis_to_flip=1)),
+            (
+                "minmax_scaler",
+                transformers.TimeSeriesMinMaxScaler(
+                    encode_len=encode_len,
+                    upper_bound=preprocessing_config["scaler_max_bound"],
+                ),
+            ),
+        ]
+    )
     # inference-specific steps
-    inference_steps.extend([
-        ("series_len_trimmer", transformers.SeriesLengthTrimmer(
-            trimmed_len=encode_len
-        )),
-        ("minmax_scaler", transformers.TimeSeriesMinMaxScaler(
-            encode_len=encode_len,
-            upper_bound=preprocessing_config["scaler_max_bound"],
-        ))
-    ])
+    inference_steps.extend(
+        [
+            (
+                "series_len_trimmer",
+                transformers.SeriesLengthTrimmer(trimmed_len=encode_len),
+            ),
+            (
+                "minmax_scaler",
+                transformers.TimeSeriesMinMaxScaler(
+                    encode_len=encode_len,
+                    upper_bound=preprocessing_config["scaler_max_bound"],
+                ),
+            ),
+        ]
+    )
     return Pipeline(training_steps), Pipeline(inference_steps)
 
 
