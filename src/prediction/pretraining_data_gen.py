@@ -320,7 +320,7 @@ def generate_seasonality_for_frequency(
         return np.ones(len_series)
 
 
-def generate_with_kernels(X, n_kernels=5):
+def generate_with_kernels(X, n_kernels=5) -> np.ndarray:
     """
     Generates synthetic time series data for each window in the input data.
 
@@ -404,9 +404,14 @@ def get_pretraining_data(
         )
         synthetic_data = np.concatenate((synthetic_data, exogenous_features), axis=2)
 
-    # Scale data
     synthetic_data = generate_with_kernels(synthetic_data)
     synthetic_data = synthetic_data.astype(np.float32)
+    # Shuffle data
+    indices = np.arange(synthetic_data.shape[0])
+    np.random.shuffle(indices)
+    synthetic_data = synthetic_data[indices]
+
+    # Scale data
     scaler = TimeSeriesMinMaxScaler(encode_len=series_len - forecast_length)
     synthetic_data = scaler.fit_transform(synthetic_data)
 
