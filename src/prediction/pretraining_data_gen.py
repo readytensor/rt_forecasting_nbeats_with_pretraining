@@ -405,11 +405,10 @@ def get_pretraining_data(
         synthetic_data = np.concatenate((synthetic_data, exogenous_features), axis=2)
 
     # Scale data
+    synthetic_data = generate_with_kernels(synthetic_data)
     synthetic_data = synthetic_data.astype(np.float32)
     scaler = TimeSeriesMinMaxScaler(encode_len=series_len - forecast_length)
     synthetic_data = scaler.fit_transform(synthetic_data)
-
-    synthetic_data = generate_with_kernels(synthetic_data)
 
     return synthetic_data
 
