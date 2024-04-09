@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Tuple
 from data_models.schema_validator import Frequency
 from preprocessing.custom_transformers import TimeSeriesMinMaxScaler
 from tqdm import tqdm
@@ -320,19 +321,21 @@ def generate_seasonality_for_frequency(
         return np.ones(len_series)
 
 
-def generate_with_kernels(X, n_kernels=5) -> np.ndarray:
+def generate_with_kernels(
+    shape: Tuple[int, int, int], n_kernels: int = 5, n_samples: int = 500
+) -> np.ndarray:
     """
     Generates synthetic time series data for each window in the input data.
 
     Parameters:
-    - X (np.ndarray): The input time-series data of windows with shape [n, w, d].
+    - shape Tuple[int, int, int]: The shape of the input data.
     - n_kernels (int): The number of kernels to sample for each window.
 
     Returns:
     - np.ndarray: The synthetic time-series data for each window, maintaining the input shape.
     """
-    n, w, d = X.shape
-    n = min(n // 5, 250)
+    _, w, d = shape
+    n = n_samples
     synthetic_series = np.zeros((n, w, d))
     kernel_bank = [
         # Linear kernels with different sigma_0 values
@@ -404,7 +407,10 @@ def get_pretraining_data(
         )
         synthetic_data = np.concatenate((synthetic_data, exogenous_features), axis=2)
 
-    synthetic_data = generate_with_kernels(synthetic_data)
+    synthetic_data = generate_with_kernels(shape=synthetic_data.shape, n_kernels=5)
+
+    # Combine the synthetic data with the kernel data
+    # synthetic_data = np.concatenate((synthetic_data, kernel_data), axis=0)
     synthetic_data = synthetic_data.astype(np.float32)
     # Shuffle data
     indices = np.arange(synthetic_data.shape[0])
