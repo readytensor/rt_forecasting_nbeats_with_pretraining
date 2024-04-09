@@ -332,7 +332,7 @@ def generate_with_kernels(X, n_kernels=5) -> np.ndarray:
     - np.ndarray: The synthetic time-series data for each window, maintaining the input shape.
     """
     n, w, d = X.shape
-    n = min(n // 5, 500)
+    n = min(n // 5, 300)
     synthetic_series = np.zeros((n, w, d))
     kernel_bank = [
         # Linear kernels with different sigma_0 values
