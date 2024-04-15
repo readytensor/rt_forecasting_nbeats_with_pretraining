@@ -6,3 +6,4 @@ tensorflow==2.15.0
 scikit-optimize==0.9.0
 tqdm==4.66.1
 psutil==5.9.8
+gpy==1.13.1

@@ -1,14 +1,9 @@
+import GPy
 import numpy as np
 from typing import Tuple
 from data_models.schema_validator import Frequency
 from preprocessing.custom_transformers import TimeSeriesMinMaxScaler
 from tqdm import tqdm
-from sklearn.gaussian_process.kernels import (
-    RBF,
-    ExpSineSquared,
-    DotProduct,
-)
-from sklearn.gaussian_process import GaussianProcessRegressor
 
 np.random.seed(1)
 
@@ -322,37 +317,46 @@ def generate_seasonality_for_frequency(
 
 
 def generate_with_kernels(
-    shape: Tuple[int, int, int], n_kernels: int = 5, n_samples: int = 500
+    shape: tuple, n_kernels: int = 5, n_samples: int = 500
 ) -> np.ndarray:
     """
-    Generates synthetic time series data for each window in the input data.
+    Generates synthetic time series data for each window in the input data using GPy.
 
     Parameters:
-    - shape Tuple[int, int, int]: The shape of the input data.
+    - shape (tuple[int, int, int]): The shape of the input data (n_windows, window_length, dimensions).
     - n_kernels (int): The number of kernels to sample for each window.
+    - n_samples (int): The number of synthetic samples to generate.
 
     Returns:
     - np.ndarray: The synthetic time-series data for each window, maintaining the input shape.
     """
     _, w, d = shape
-    n = n_samples
-    synthetic_series = np.zeros((n, w, d))
+    synthetic_series = np.zeros((n_samples, w, d))
+
+    # Defining a variety of kernels
     kernel_bank = [
-        # Linear kernels with different sigma_0 values
-        DotProduct(sigma_0=1.0),
-        DotProduct(sigma_0=0.1),
-        # RBF kernels with different length scales
-        RBF(length_scale=1.0),
-        RBF(length_scale=0.1),
-        RBF(length_scale=10.0),
-        # Periodic kernels with different length scales and periodicities
-        ExpSineSquared(length_scale=1.0, periodicity=3.0),
-        ExpSineSquared(length_scale=0.5, periodicity=1.0),
-        ExpSineSquared(length_scale=2.0, periodicity=5.0),
-        ExpSineSquared(length_scale=10.0, periodicity=2.0),
+        GPy.kern.RBF(input_dim=1, variance=1.0, lengthscale=1.0),
+        GPy.kern.RBF(input_dim=1, variance=2.0, lengthscale=2.0),
+        GPy.kern.RBF(input_dim=1, variance=2.0, lengthscale=1.0),
+        GPy.kern.RBF(input_dim=1, variance=0.5, lengthscale=1.0),
+        GPy.kern.RBF(input_dim=1, variance=1.0, lengthscale=0.5),
+        GPy.kern.PeriodicExponential(1, lengthscale=1.0, period=1.0),
+        GPy.kern.PeriodicExponential(1, lengthscale=1.0, period=2.0),
+        GPy.kern.PeriodicExponential(1, lengthscale=1.0, period=0.5),
+        GPy.kern.PeriodicExponential(1, lengthscale=2.0, period=1.0),
+        GPy.kern.PeriodicExponential(1, lengthscale=2.0, period=2.0),
+        GPy.kern.PeriodicExponential(1, lengthscale=2.0, period=0.5),
+        GPy.kern.PeriodicExponential(1, lengthscale=0.5, period=1.0),
+        GPy.kern.PeriodicExponential(1, lengthscale=0.5, period=2.0),
+        GPy.kern.PeriodicExponential(1, lengthscale=0.5, period=0.5),
+        GPy.kern.Linear(input_dim=1, variances=1.0),
+        GPy.kern.Linear(input_dim=1, variances=2.0),
+        GPy.kern.Linear(input_dim=1, variances=0.5),
     ]
 
-    for i in tqdm(range(n), desc="Generating synthetic series with kernel synthesizer"):
+    for i in tqdm(
+        range(n_samples), desc="Generating synthetic series with GPy kernel synthesizer"
+    ):
         for dim in range(d):
             # Sample kernels and combine them
             sampled_kernels = np.random.choice(
@@ -365,13 +369,19 @@ def generate_with_kernels(
                 else:
                     combined_kernel *= k
 
+            # Dummy initial data for model instantiation
+            X_dummy = np.linspace(0, w - 1, w).reshape(-1, 1)
+            Y_dummy = np.zeros((w, 1))
+
             # Create a GP model with the combined kernel
-            gp = GaussianProcessRegressor(kernel=combined_kernel, random_state=42)
+            gp = GPy.models.GPRegression(X_dummy, Y_dummy, kernel=combined_kernel)
 
             # Assuming evenly spaced time points within each window
             time_points = np.linspace(0, w - 1, w).reshape(-1, 1)
             # Sample synthetic data from the GP model for the current window and dimension
-            synthetic_series[i, :, dim] = gp.sample_y(time_points, 1).flatten()
+            Y = gp.posterior_samples_f(time_points, full_cov=False, size=1)
+            synthetic_series[i, :, dim] = Y.squeeze()
+
     return synthetic_series
 
 
@@ -407,7 +417,9 @@ def get_pretraining_data(
         )
         synthetic_data = np.concatenate((synthetic_data, exogenous_features), axis=2)
 
-    synthetic_data = generate_with_kernels(shape=synthetic_data.shape, n_kernels=5)
+    synthetic_data = generate_with_kernels(
+        shape=synthetic_data.shape, n_kernels=5, n_samples=1000
+    )
 
     # Combine the synthetic data with the kernel data
     # synthetic_data = np.concatenate((synthetic_data, kernel_data), axis=0)
