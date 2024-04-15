@@ -365,8 +365,10 @@ def generate_with_kernels(
             combined_kernel = sampled_kernels[0]
             for k in sampled_kernels[1:]:
                 if np.random.rand() > 0.5:
+                    print("+")
                     combined_kernel += k
                 else:
+                    print("*")
                     combined_kernel *= k
 
             # Dummy initial data for model instantiation
@@ -405,6 +407,7 @@ def get_pretraining_data(
     # Calculate # of samples to generate
     num_series = calculate_max_N(series_len, 1 + num_exog, target_ram_gb=3.0)
     # Generate base synthetic data
+    print("generating synth data")
     synthetic_data = generate_synthetic_data(num_series, series_len, frequency)
 
     # Expand to 3 dimensions
