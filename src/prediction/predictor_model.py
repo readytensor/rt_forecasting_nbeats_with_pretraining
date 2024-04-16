@@ -14,7 +14,10 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 from prediction.nbeats_model import NBeatsNet
-from prediction.pretraining_data_gen import get_pretraining_data
+from prediction.pretraining_data_gen import (
+    get_pretraining_data,
+    get_kernel_pretraining_data,
+)
 
 
 # Check for GPU availability
@@ -33,7 +36,7 @@ HISTORY_FNAME = "history.json"
 COST_THRESHOLD = float("inf")
 
 
-def get_patience_factor(N): 
+def get_patience_factor(N):
     # magic number - just picked through trial and error
     patience = max(4, int(38 - math.log(N, 1.5)))
     return patience
@@ -45,26 +48,27 @@ class Forecaster:
     This class provides a consistent interface that can be used with other
     Forecaster models.
     """
-    GENERIC_BLOCK = 'generic'
-    TREND_BLOCK = 'trend'
-    SEASONALITY_BLOCK = 'seasonality'
+
+    GENERIC_BLOCK = "generic"
+    TREND_BLOCK = "trend"
+    SEASONALITY_BLOCK = "seasonality"
 
     MIN_VALID_SIZE = 10
 
     MODEL_NAME = "Nbeats"
 
     def __init__(
-            self,
-            backcast_length:int,
-            forecast_length:int,
-            num_exog:int=0,
-            num_generic_stacks:int=2,
-            nb_blocks_per_stack:int=2,
-            thetas_dim_per_stack:int=16,
-            hidden_layer_units:int=32,
-            share_weights_in_stack:bool=False,
-            **kwargs
-        ):
+        self,
+        backcast_length: int,
+        forecast_length: int,
+        num_exog: int = 0,
+        num_generic_stacks: int = 2,
+        nb_blocks_per_stack: int = 2,
+        thetas_dim_per_stack: int = 16,
+        hidden_layer_units: int = 32,
+        share_weights_in_stack: bool = False,
+        **kwargs,
+    ):
         """Construct a new Nbeats Forecaster.
 
         Args:
@@ -92,7 +96,7 @@ class Forecaster:
         self.hidden_layer_units = hidden_layer_units
         self.share_weights_in_stack = share_weights_in_stack
         self.model = self.build_model()
-        self.loss = 'mse'
+        self.loss = "mse"
         self.learning_rate = 1e-4
         self.model.compile_model(self.loss, self.learning_rate)
         self.batch_size = 64
@@ -119,12 +123,12 @@ class Forecaster:
         )
         return model
 
-    def _get_X_y_and_E(self, data: np.ndarray, is_train:bool=True) -> np.ndarray:
+    def _get_X_y_and_E(self, data: np.ndarray, is_train: bool = True) -> np.ndarray:
         """Extract X (historical target series), y (forecast window target) and
-            E (exogenous series) from given array of shape [N, T, D]
+        E (exogenous series) from given array of shape [N, T, D]
 
-            When is_train is True, data contains both history and forecast windows.
-            When False, only history is contained.
+        When is_train is True, data contains both history and forecast windows.
+        When False, only history is contained.
         """
         N, T, D = data.shape
         if D != 1 + self.num_exog:
@@ -138,10 +142,10 @@ class Forecaster:
                     f"Training data expected to have {self.backcast_length + self.forecast_length}"
                     f" length on axis 1. Found length {T}"
                 )
-            X = data[:, :self.backcast_length, :1]
-            y = data[:, self.backcast_length:, :1]
+            X = data[:, : self.backcast_length, :1]
+            y = data[:, self.backcast_length :, :1]
             if D > 1:
-                E = data[:, :self.backcast_length, 1:]
+                E = data[:, : self.backcast_length, 1:]
             else:
                 E = None
         else:
@@ -151,10 +155,10 @@ class Forecaster:
                     f"Inference data length expected to be >= {self.backcast_length}"
                     f" on axis 1. Found length {T}"
                 )
-            X = data[:, -self.backcast_length:, :1]
+            X = data[:, -self.backcast_length :, :1]
             y = None
             if D > 1:
-                E = data[:, -self.backcast_length:, 1:]
+                E = data[:, -self.backcast_length :, 1:]
             else:
                 E = None
         return X, y, E
@@ -166,15 +170,13 @@ class Forecaster:
             data (pandas.DataFrame): The training data.
         """
         X, y, E = self._get_X_y_and_E(data, is_train=True)
-        loss_to_monitor = 'loss' if validation_split is None else 'val_loss'
+        loss_to_monitor = "loss" if validation_split is None else "val_loss"
         patience = get_patience_factor(X.shape[0])
         early_stop_callback = EarlyStopping(
-            monitor=loss_to_monitor, min_delta = 1e-4, patience=patience)
+            monitor=loss_to_monitor, min_delta=1e-4, patience=patience
+        )
         learning_rate_reduction = ReduceLROnPlateau(
-            monitor=loss_to_monitor,
-            patience=patience//2,
-            factor=0.5,
-            min_lr=1e-7
+            monitor=loss_to_monitor, patience=patience // 2, factor=0.5, min_lr=1e-7
         )
         history = self.model.fit(
             x=[X, E] if E is not None else X,
@@ -184,15 +186,20 @@ class Forecaster:
             epochs=max_epochs,
             callbacks=[early_stop_callback, learning_rate_reduction],
             batch_size=self.batch_size,
-            shuffle=True
+            shuffle=True,
         )
         # recompile the model to reset the optimizer; otherwise re-training slows down
         self.model.compile_model(self.loss, self.learning_rate)
         return history
 
-    def fit(self, training_data:np.ndarray, pre_training_data: Union[np.ndarray, None]=None,
-            validation_split: Union[float, None]=0.15, verbose:int=0,
-            max_epochs:int=2000):
+    def fit(
+        self,
+        training_data: np.ndarray,
+        pre_training_data: Union[np.ndarray, None] = None,
+        validation_split: Union[float, None] = 0.15,
+        verbose: int = 0,
+        max_epochs: int = 2000,
+    ):
         """
         Fit the Forecaster to the training data.
 
@@ -205,7 +212,7 @@ class Forecaster:
                 data=pre_training_data,
                 validation_split=validation_split,
                 verbose=verbose,
-                max_epochs=max_epochs
+                max_epochs=max_epochs,
             )
 
         print("Training on main data...")
@@ -213,7 +220,7 @@ class Forecaster:
             data=training_data,
             validation_split=validation_split,
             verbose=verbose,
-            max_epochs=max_epochs
+            max_epochs=max_epochs,
         )
         self._is_trained = True
         return history
@@ -227,9 +234,9 @@ class Forecaster:
             numpy.ndarray: predictions as numpy array.
         """
         X, y, E = self._get_X_y_and_E(test_data, is_train=False)
-        preds = self.model.predict(x=[X, E] if E is not None else X )
+        preds = self.model.predict(x=[X, E] if E is not None else X)
         return preds
-    
+
     def evaluate(self, test_data: np.ndarray) -> np.ndarray:
         """Return loss for given evaluation X and y
 
@@ -239,10 +246,7 @@ class Forecaster:
             float: loss value (mse).
         """
         X, y, E = self._get_X_y_and_E(test_data, is_train=False)
-        score = self.model.evaluate(
-            x=[X, E] if E is not None else X,
-            y=y
-        )
+        score = self.model.evaluate(x=[X, E] if E is not None else X, y=y)
         return score
 
     def save(self, model_dir_path: str) -> None:
@@ -306,16 +310,26 @@ def train_predictor_model(
     Returns:
         'Forecaster': The Forecaster model
     """
-    pre_training_data = get_pretraining_data(
-        series_len=history.shape[1],
+    backcast_length = history.shape[1] - forecast_length
+    num_exog = history.shape[2] - 1
+    # pre_training_data = get_pretraining_data(
+    #     series_len=history.shape[1],
+    #     forecast_length=forecast_length,
+    #     frequency=frequency,
+    #     num_exog=history.shape[2]-1
+    # )
+    pre_training_data = get_kernel_pretraining_data(
+        window_length=history.shape[1],
         forecast_length=forecast_length,
-        frequency=frequency,
-        num_exog=history.shape[2]-1
+        num_exog=num_exog,
+        num_windows=1000,
     )
+
+    print(pre_training_data.shape)
     model = Forecaster(
-        backcast_length=history.shape[1] - forecast_length,
+        backcast_length=backcast_length,
         forecast_length=forecast_length,
-        num_exog=history.shape[2] - 1,
+        num_exog=num_exog,
         **hyperparameters,
     )
     model.fit(
@@ -325,9 +339,7 @@ def train_predictor_model(
     return model
 
 
-def predict_with_model(
-    model: Forecaster, test_data: np.ndarray
-) -> np.ndarray:
+def predict_with_model(model: Forecaster, test_data: np.ndarray) -> np.ndarray:
     """
     Make forecast.
 
