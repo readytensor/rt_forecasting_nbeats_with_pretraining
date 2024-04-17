@@ -9,7 +9,7 @@ from config import paths
 
 np.random.seed(1)
 
-MAX_NUM_PRETRAINING_SERIES = 500
+MAX_NUM_PRETRAINING_SERIES = 60_000
 
 
 def calculate_max_N(T: int, D: int, target_ram_gb: float) -> int:
