@@ -16,8 +16,9 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from prediction.nbeats_model import NBeatsNet
 from prediction.pretraining_data_gen import (
     get_pretraining_data,
-    get_kernel_pretraining_data,
+    get_kernel_pretrain_data,
 )
+from config import paths
 
 
 # Check for GPU availability
@@ -310,6 +311,7 @@ def train_predictor_model(
     Returns:
         'Forecaster': The Forecaster model
     """
+    kernel_pretrain_data = joblib.load(paths.KERNEL_SYNTH_DATA)
     backcast_length = history.shape[1] - forecast_length
     num_exog = history.shape[2] - 1
     # pre_training_data = get_pretraining_data(
@@ -318,14 +320,14 @@ def train_predictor_model(
     #     frequency=frequency,
     #     num_exog=history.shape[2]-1
     # )
-    pre_training_data = get_kernel_pretraining_data(
+    pre_training_data = get_kernel_pretrain_data(
+        data=kernel_pretrain_data,
         window_length=history.shape[1],
         forecast_length=forecast_length,
         num_exog=num_exog,
-        num_windows=1000,
+        num_windows=60000,
     )
 
-    print(pre_training_data.shape)
     model = Forecaster(
         backcast_length=backcast_length,
         forecast_length=forecast_length,

@@ -1,9 +1,11 @@
 import GPy
+import joblib
 import numpy as np
 from typing import Tuple
 from data_models.schema_validator import Frequency
 from preprocessing.custom_transformers import TimeSeriesMinMaxScaler
 from tqdm import tqdm
+from config import paths
 
 np.random.seed(1)
 
@@ -332,6 +334,7 @@ def generate_with_kernels(
     """
     w = window_length
     synthetic_series = np.zeros((n_samples, w))
+    used_combinations = set()
 
     # Defining a variety of kernels
     kernel_bank = [
@@ -345,10 +348,6 @@ def generate_with_kernels(
         GPy.kern.PeriodicExponential(1, lengthscale=1.0, period=0.5),
         GPy.kern.PeriodicExponential(1, lengthscale=2.0, period=1.0),
         GPy.kern.PeriodicExponential(1, lengthscale=2.0, period=2.0),
-        GPy.kern.PeriodicExponential(1, lengthscale=2.0, period=0.5),
-        GPy.kern.PeriodicExponential(1, lengthscale=0.5, period=1.0),
-        GPy.kern.PeriodicExponential(1, lengthscale=0.5, period=2.0),
-        GPy.kern.PeriodicExponential(1, lengthscale=0.5, period=0.5),
         GPy.kern.Linear(input_dim=1, variances=1.0),
         GPy.kern.Linear(input_dim=1, variances=2.0),
         GPy.kern.Linear(input_dim=1, variances=0.5),
@@ -366,6 +365,11 @@ def generate_with_kernels(
             else:
                 combined_kernel *= k
 
+        combination_key = "".join(sorted([str(k) for k in sampled_kernels]))
+
+        if combination_key in used_combinations:
+            continue  # Skip this iteration if the combination was used before
+
         # Dummy initial data for model instantiation
         X_dummy = np.linspace(0, w - 1, w).reshape(-1, 1)
         Y_dummy = np.zeros((w, 1))
@@ -378,71 +382,9 @@ def generate_with_kernels(
         # Sample synthetic data from the GP model for the current window
         Y = gp.posterior_samples_f(time_points, full_cov=False, size=1)
         synthetic_series[i, :] = Y.squeeze()
+        if i % 10 == 0:
+            joblib.dump(synthetic_series, paths.KERNEL_SYNTH_DATA)
     return synthetic_series
-
-
-# def generate_series(
-#     length: int, n_kernels: int = 5, n_samples: int = 500
-# ) -> np.ndarray:
-#     """
-#     Generates synthetic time series data using GPy.
-
-#     Parameters:
-#     - length (int): The length of the time series.
-#     - n_kernels (int): The number of kernels to sample.
-#     - n_samples (int): The number of synthetic samples to generate.
-
-#     Returns:
-#     - np.ndarray: The synthetic time-series data.
-#     """
-#     synthetic_series = np.zeros((n_samples, length))
-
-#     # Defining a variety of kernels
-#     kernel_bank = [
-#         GPy.kern.RBF(input_dim=1, variance=1.0, lengthscale=1.0),
-#         GPy.kern.RBF(input_dim=1, variance=2.0, lengthscale=2.0),
-#         GPy.kern.RBF(input_dim=1, variance=2.0, lengthscale=1.0),
-#         GPy.kern.RBF(input_dim=1, variance=0.5, lengthscale=1.0),
-#         GPy.kern.RBF(input_dim=1, variance=1.0, lengthscale=0.5),
-#         GPy.kern.PeriodicExponential(1, lengthscale=1.0, period=1.0),
-#         GPy.kern.PeriodicExponential(1, lengthscale=1.0, period=2.0),
-#         GPy.kern.PeriodicExponential(1, lengthscale=1.0, period=0.5),
-#         GPy.kern.PeriodicExponential(1, lengthscale=2.0, period=1.0),
-#         GPy.kern.PeriodicExponential(1, lengthscale=2.0, period=2.0),
-#         GPy.kern.PeriodicExponential(1, lengthscale=2.0, period=0.5),
-#         GPy.kern.PeriodicExponential(1, lengthscale=0.5, period=1.0),
-#         GPy.kern.PeriodicExponential(1, lengthscale=0.5, period=2.0),
-#         GPy.kern.PeriodicExponential(1, lengthscale=0.5, period=0.5),
-#         GPy.kern.Linear(input_dim=1, variances=1.0),
-#         GPy.kern.Linear(input_dim=1, variances=2.0),
-#         GPy.kern.Linear(input_dim=1, variances=0.5),
-#     ]
-
-#     for i in tqdm(
-#         range(n_samples), desc="Generating synthetic series with GPy kernel synthesizer"
-#     ):
-#         # Sample kernels and combine them
-#         sampled_kernels = np.random.choice(kernel_bank, size=n_kernels, replace=True)
-#         combined_kernel = sampled_kernels[0]
-#         for k in sampled_kernels[1:]:
-#             if np.random.rand() > 0.5:
-#                 combined_kernel += k
-#             else:
-#                 combined_kernel *= k
-
-#         # Dummy initial data for model instantiation
-#         X_dummy = np.linspace(0, length - 1, length).reshape(-1, 1)
-#         Y_dummy = np.zeros((length, 1))
-
-#         # Create a GP model with the combined kernel
-#         gp = GPy.models.GPRegression(X_dummy, Y_dummy, kernel=combined_kernel)
-
-#         # Sample synthetic data from the GP model
-#         time_points = np.linspace(0, length - 1, length).reshape(-1, 1)
-#         Y = gp.posterior_samples_f(time_points, full_cov=False, size=1)
-#         synthetic_series[i, :] = Y.squeeze()
-
-#     return synthetic_series
 
 
 def get_pretraining_data(
@@ -464,11 +406,11 @@ def get_pretraining_data(
     """
     # Calculate # of samples to generate
     num_series = calculate_max_N(series_len, 1 + num_exog, target_ram_gb=3.0)
-
+    # Generate base synthetic data
     synthetic_data = generate_synthetic_data(num_series, series_len, frequency)
 
-    # # Expand to 3 dimensions
-    # synthetic_data = synthetic_data[:, :, np.newaxis]
+    # Expand to 3 dimensions
+    synthetic_data = synthetic_data[:, :, np.newaxis]
 
     # Add exogenous features if num_exog is positive
     if num_exog > 0:
@@ -477,52 +419,84 @@ def get_pretraining_data(
         )
         synthetic_data = np.concatenate((synthetic_data, exogenous_features), axis=2)
 
-    # synthetic_data = generate_with_kernels(
-    #     window_length=synthetic_data.shape, n_kernels=5, n_samples=1000
-    # )
-
-    # print("shape of synthetic data: ", synthetic_data.shape)
-
-    # Combine the synthetic data with the kernel data
-    # synthetic_data = np.concatenate((synthetic_data, kernel_data), axis=0)
-    synthetic_data = synthetic_data.astype(np.float32)
-    # Shuffle data
-    indices = np.arange(synthetic_data.shape[0])
-    np.random.shuffle(indices)
-    synthetic_data = synthetic_data[indices]
-
     # Scale data
+    synthetic_data = synthetic_data.astype(np.float32)
     scaler = TimeSeriesMinMaxScaler(encode_len=series_len - forecast_length)
     synthetic_data = scaler.fit_transform(synthetic_data)
 
     return synthetic_data
 
 
-def get_kernel_pretraining_data(
+def get_kernel_pretrain_data(
+    data: np.ndarray,
     window_length: int,
+    num_windows: int,
     forecast_length: int,
-    n_kernels: int = 5,
-    num_windows: int = 1000,
     num_exog: int = 0,
 ) -> np.ndarray:
-    data = generate_with_kernels(
-        window_length=window_length, n_kernels=n_kernels, n_samples=num_windows
-    )
-    data = data[:, :, np.newaxis]
-    # Add exogenous features if num_exog is positive
+    """
+    Sample windows of length `window_length` from the input data.
+
+    Args:
+        data (np.ndarray): The input data.
+        window_length (int): The length of each window.
+        num_windows (int): The number of windows to sample.
+        forecast_length (int): The length of forecast window.
+        num_exog (int): The number of exogenous features in the data.
+
+    Returns:
+        np.ndarray: A 3D numpy array of shape [num_windows, window_length, num_features]
+                    containing the sampled windows.
+    """
+    num_series, old_window_length = data.shape
+    windows = np.zeros((num_windows, window_length))
+
+    for i in range(num_windows):
+        series_idx = np.random.randint(0, num_series)
+        start_idx = np.random.randint(0, old_window_length - window_length)
+        windows[i] = data[series_idx, start_idx : start_idx + window_length]
+
+    windows = windows[:, :, np.newaxis]
     if num_exog > 0:
         exogenous_features = np.random.standard_normal(
-            (data.shape[0], data.shape[1], num_exog)
+            (windows.shape[0], windows.shape[1], num_exog)
         )
-        data = np.concatenate((data, exogenous_features), axis=2)
+        windows = np.concatenate((windows, exogenous_features), axis=2)
 
-    # Scale data
-    scaler = TimeSeriesMinMaxScaler(encode_len=data.shape[1] - forecast_length)
-    synthetic_data = scaler.fit_transform(data)
-    return synthetic_data
+    scaler = TimeSeriesMinMaxScaler(encode_len=window_length - forecast_length)
+    windows = scaler.fit_transform(windows)
+
+    return windows
 
 
 if __name__ == "__main__":
 
-    x = generate_with_kernels(10000, n_kernels=5, n_samples=10)
-    print(x.shape)
+    pre_training_data = generate_with_kernels(
+        window_length=1000, n_samples=10000, n_kernels=5
+    )
+
+    print(pre_training_data.shape)
+
+    # sampled = sample_windows(
+    #     pre_training_data,
+    #     window_length=100,
+    #     num_windows=10,
+    #     forecast_length=5,
+    #     num_exog=5,
+    # )
+    # print(sampled.shape)
+    # import matplotlib.pyplot as plt
+
+    # np.random.seed(0)
+    # data = sampled[:, :, 0].squeeze().T  # 100 data points, 2 series
+    # print(data[:, 0])
+    # # Plotting
+    # plt.figure(figsize=(10, 5))  # Set the figure size
+    # plt.plot(data[:, 6], label="Series 1")  # Plot the first series
+    # # plt.plot(data[:, 1], label="Series 2")  # Plot the second series
+    # plt.title("Visualization of Two Series from a 2D Array")
+    # plt.xlabel("Index")
+    # plt.ylabel("Value")
+    # plt.legend()  # Add a legend to distinguish the series
+    # plt.grid(True)  # Add a grid for better readability
+    # plt.show()

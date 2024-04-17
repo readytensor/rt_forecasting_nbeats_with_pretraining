@@ -59,3 +59,5 @@ PREPROCESSING_CONFIG_FILE_PATH = os.path.join(CONFIG_DIR, "preprocessing.json")
 DEFAULT_HYPERPARAMETERS_FILE_PATH = os.path.join(
     CONFIG_DIR, "default_hyperparameters.json"
 )
+# Path to kernel synthesizer generated data
+KERNEL_SYNTH_DATA = os.path.join(SRC_DIR, "prediction", "kernel_synth_data.joblib")
