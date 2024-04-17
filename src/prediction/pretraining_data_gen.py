@@ -9,7 +9,7 @@ from config import paths
 
 np.random.seed(1)
 
-MAX_NUM_PRETRAINING_SERIES = 60_000
+MAX_NUM_PRETRAINING_SERIES = 500
 
 
 def calculate_max_N(T: int, D: int, target_ram_gb: float) -> int:
@@ -388,7 +388,11 @@ def generate_with_kernels(
 
 
 def get_pretraining_data(
-    series_len: int, forecast_length: int, frequency: Frequency, num_exog: int = 0
+    series_len: int,
+    forecast_length: int,
+    frequency: Frequency,
+    num_exog: int = 0,
+    scale: bool = True,
 ) -> np.ndarray:
     """
     Generates synthetic data for pretraining, with optional exogenous features and scaling.
@@ -399,6 +403,7 @@ def get_pretraining_data(
         frequency (Frequency): Frequency of the data such as MONTHLY, DAILY, etc.
         num_exog (int): The number of exogenous features to generate.
                         If 0, no exogenous features are added.
+        scale (bool): Whether to scale the data or not.
 
     Returns:
         np.ndarray: A 3D numpy array of shape [num_series, series_len, 1 + num_exog]
@@ -421,8 +426,9 @@ def get_pretraining_data(
 
     # Scale data
     synthetic_data = synthetic_data.astype(np.float32)
-    scaler = TimeSeriesMinMaxScaler(encode_len=series_len - forecast_length)
-    synthetic_data = scaler.fit_transform(synthetic_data)
+    if scale:
+        scaler = TimeSeriesMinMaxScaler(encode_len=series_len - forecast_length)
+        synthetic_data = scaler.fit_transform(synthetic_data)
 
     return synthetic_data
 
@@ -433,6 +439,7 @@ def get_kernel_pretrain_data(
     num_windows: int,
     forecast_length: int,
     num_exog: int = 0,
+    scale: bool = True,
 ) -> np.ndarray:
     """
     Sample windows of length `window_length` from the input data.
@@ -443,6 +450,7 @@ def get_kernel_pretrain_data(
         num_windows (int): The number of windows to sample.
         forecast_length (int): The length of forecast window.
         num_exog (int): The number of exogenous features in the data.
+        scale (bool): Whether to scale the data or not.
 
     Returns:
         np.ndarray: A 3D numpy array of shape [num_windows, window_length, num_features]
@@ -463,10 +471,15 @@ def get_kernel_pretrain_data(
         )
         windows = np.concatenate((windows, exogenous_features), axis=2)
 
-    scaler = TimeSeriesMinMaxScaler(encode_len=window_length - forecast_length)
-    windows = scaler.fit_transform(windows)
+    if scale:
+        scaler = TimeSeriesMinMaxScaler(encode_len=window_length - forecast_length)
+        windows = scaler.fit_transform(windows)
 
     return windows
+
+
+def merge_data():
+    pre_training_data = get_pretraining_data()
 
 
 if __name__ == "__main__":

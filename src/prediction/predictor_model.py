@@ -18,6 +18,8 @@ from prediction.pretraining_data_gen import (
     get_pretraining_data,
     get_kernel_pretrain_data,
 )
+from preprocessing.custom_transformers import TimeSeriesMinMaxScaler
+
 from config import paths
 
 
@@ -314,19 +316,28 @@ def train_predictor_model(
     kernel_pretrain_data = joblib.load(paths.KERNEL_SYNTH_DATA)
     backcast_length = history.shape[1] - forecast_length
     num_exog = history.shape[2] - 1
-    # pre_training_data = get_pretraining_data(
-    #     series_len=history.shape[1],
-    #     forecast_length=forecast_length,
-    #     frequency=frequency,
-    #     num_exog=history.shape[2]-1
-    # )
-    pre_training_data = get_kernel_pretrain_data(
+    pre_training_data = get_pretraining_data(
+        series_len=history.shape[1],
+        forecast_length=forecast_length,
+        frequency=frequency,
+        num_exog=num_exog,
+        scale=False,
+    )
+
+    kernel_pre_training_data = get_kernel_pretrain_data(
         data=kernel_pretrain_data,
         window_length=history.shape[1],
         forecast_length=forecast_length,
         num_exog=num_exog,
         num_windows=60000,
+        scale=False,
     )
+    pre_training_data = np.concatenate(
+        [pre_training_data, kernel_pre_training_data], axis=0
+    )
+
+    scaler = TimeSeriesMinMaxScaler(encode_len=history.shape[1] - forecast_length)
+    pre_training_data = scaler.fit_transform(pre_training_data)
 
     model = Forecaster(
         backcast_length=backcast_length,
